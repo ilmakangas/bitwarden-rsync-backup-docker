@@ -31,7 +31,7 @@ You need to get a Bitwarden API key from the Bitwarden Web UI.
 
 9. Execute the container providing the config directory as a volume. The volume must be mounted to /config
 
-       docker exec --rm -v ./configdirectory:/config -it <image_name>
+       docker run --rm -v ./configdirectory:/config -it <image_name>
 
 10. The container backs up your vault to the rsync target. You can get the age keyfile from the configuration directory after first run of the container.
    On subsequent executions the same keyfile is automatically used.
