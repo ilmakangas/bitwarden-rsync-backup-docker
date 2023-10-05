@@ -1,0 +1,2 @@
+#!/bin/sh
+node /bw/node_modules/@bitwarden/cli/build/bw.js "$@"
