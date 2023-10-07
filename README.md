@@ -4,6 +4,8 @@ Docker container for backing up Bitwarden vault with rsync.
 When executed, the container connects to Bitwarden using credentials supplied in the config file and backs up the vault using rsync to a chosen destination. 
 The backup is automatically encrypted with [age](https://github.com/FiloSottile/age).
 
+The container automatically logs in to the Bitwarden account. On subsequent backups the same login session is used (session data is stored inside the config volume). The vault is automatically synchronized from the cloud before each backup. After each backup the vault is automatically locked.
+
 ## Prerequisites
 You need to get a Bitwarden API key from the Bitwarden Web UI.
 

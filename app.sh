@@ -9,9 +9,21 @@ AGE_KEYFILE_NAME=age.key
 AGE_KEYFILE=$CONFDIR/$AGE_KEYFILE_NAME
 BACKUPFILE=/tmp/$(date +"backup-%d-%m-%Y-%H-%M-%S.json.age")
 
-cleanup_logout() {
-	echo "AFTER_FAIL: Cleanup, logging out of Bitwarden"
-	bw logout
+export BITWARDENCLI_APPDATA_DIR=$CONFDIR/bw-config
+
+ensure_bw_logged_in_and_synced() {
+	if [ $(bw login --check | grep "You are logged in" | wc -l) != 1 ]; then
+		echo "INFO: Not logged in to Bitwarden, logging in..."
+		bw login --apikey --raw || { echo "FAIL: Bitwarden login failed with status $?"; exit 1; }
+	else
+		echo "INFO: Already logged in to Bitwarden, syncing vault"
+		bw sync || { echo "FAIL: Bitwarden vault sync failed with status $?"; exit 1; }
+	fi
+}
+
+cleanup_lock() {
+	echo "AFTER_FAIL: Cleanup, locking the Bitwarden vault"
+	bw lock
 }
 [ ! -d $CONFDIR ] && { echo "FAIL: Config volume $CONFDIR not mounted"; exit 1; }
 [ ! -f $CONFFILE ] && { echo "FAIL: Config file $CONFFILE doesnt exist"; exit 1; }
@@ -31,26 +43,24 @@ AGE_PUBKEY=$(cat $AGE_KEYFILE | awk -F ' ' "NR==2 { print \$4 }")
 echo "INFO: AGE public key: $AGE_PUBKEY"
 source $CONFFILE
 
-echo "INFO: Logging in to Bitwarden"
-bw login --apikey --raw || { echo "FAIL: Bitwarden login failed with status $?"; exit 1; }
+ensure_bw_logged_in_and_synced
 
 echo "INFO: Unlocking Bitwarden vault"
-BW_SESSION=$(bw unlock --passwordenv BW_PASSWORD --raw) || { echo "FAIL: Bitwarden unlock failed with status $?";
-	cleanup_logout; exit 1; }
+BW_SESSION=$(bw unlock --passwordenv BW_PASSWORD --raw) || { echo "FAIL: Bitwarden unlock failed with status $?"; exit 1; }
 
 echo "INFO: Exporting and encrypting the vault"
-bw export --session $BW_SESSION --format json --raw | age -r $AGE_PUBKEY > $BACKUPFILE || 
-	{ echo "FAIL: Export or encrypt failed with status $?"; cleanup_logout; exit 1; }
+bw export --session $BW_SESSION --format json --raw | age -r $AGE_PUBKEY > $BACKUPFILE ||
+	{ echo "FAIL: Export or encrypt failed with status $?"; cleanup_lock; exit 1; }
 
 echo "INFO: Verifying successful backup"
-[ $(age --decrypt -i $AGE_KEYFILE $BACKUPFILE | awk "NR==1 { print }") != "{" ] && 
-	{ echo "FAIL: Backup verification failed with status $?"; cleanup_logout; exit 1; }
+[ $(age --decrypt -i $AGE_KEYFILE $BACKUPFILE | awk "NR==1 { print }") != "{" ] &&
+	{ echo "FAIL: Backup verification failed with status $?"; cleanup_lock; exit 1; }
 
-echo "INFO: Verified successfully, logging out of Bitwarden"
-bw logout
+echo "INFO: Verified successfully, locking the Bitwarden vault"
+bw lock
 
 echo "INFO: Rsyncing file to target"
-rsync -av -e "ssh -o StrictHostKeyChecking=accept-new -i $CONFDIR/$RSYNC_SSH_KEYFILE" $BACKUPFILE $RSYNC_TARGET || 
+rsync -av -e "ssh -o StrictHostKeyChecking=accept-new -i $CONFDIR/$RSYNC_SSH_KEYFILE" $BACKUPFILE $RSYNC_TARGET ||
 	{ echo "FAIL: Rsync failed with status $?"; exit 1; }
 rm $BACKUPFILE
 echo "INFO: Backup task completed"
